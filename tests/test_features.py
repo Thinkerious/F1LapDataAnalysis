@@ -60,3 +60,19 @@ def test_prepare_drops_driver_races_with_too_few_clean_laps():
     df = prepare(clean, clean)
 
     assert set(df["driver"]) == {"VER"}
+
+
+def test_linear_features_split_wear_by_compound_and_scale_fuel_by_race_length():
+    from f1lab.models import linear_features
+
+    d = pd.DataFrame(
+        {
+            "laps_remaining": [30, 0], "race_laps": [60, 50], "compound": ["SOFT", "HARD"],
+            "tyre_age": [10.0, 4.0], "track_temp": [30.0, 35.0], "track": ["A", "B"],
+        }
+    )
+    x = linear_features(d, tracks=["A", "B"])
+    assert x["fuel_frac"].tolist() == [0.5, 0.0]
+    assert x["wear_SOFT"].tolist() == [10.0, 0.0]  # wear only counts on its own compound
+    assert x["wear_HARD"].tolist() == [0.0, 4.0]
+    assert x["track_A"].tolist() == [1.0, 0.0]
