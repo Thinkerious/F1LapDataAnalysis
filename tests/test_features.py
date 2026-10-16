@@ -76,3 +76,19 @@ def test_linear_features_split_wear_by_compound_and_scale_fuel_by_race_length():
     assert x["wear_SOFT"].tolist() == [10.0, 0.0]  # wear only counts on its own compound
     assert x["wear_HARD"].tolist() == [0.0, 4.0]
     assert x["track_A"].tolist() == [1.0, 0.0]
+
+
+def test_gbm_features_mark_unseen_track_as_missing_and_keep_compound_order():
+    from f1lab.models import gbm_features
+
+    d = pd.DataFrame(
+        {
+            "laps_remaining": [10, 20], "race_laps": [50, 50], "lap_number": [40, 30],
+            "tyre_age": [5.0, 9.0], "track_temp": [30.0, 31.0], "air_temp": [20.0, 21.0],
+            "compound": ["HARD", "SOFT"], "track": ["Monza", "Shanghai"],
+        }
+    )
+    x = gbm_features(d, tracks=["Monza"])
+    assert x["track"].isna().tolist() == [False, True]
+    assert list(x["compound"].cat.categories) == ["SOFT", "MEDIUM", "HARD"]
+    assert x["fuel_frac"].tolist() == [0.2, 0.4]
