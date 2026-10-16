@@ -60,6 +60,7 @@ def test_fastf1_build_laps_infers_out_lap_and_converts_times():
             "Compound": ["SOFT", "SOFT", "HARD"],
             "TyreLife": [1.0, 2.0, 1.0],
             "Stint": [1.0, 1.0, 2.0],
+            "TrackStatus": ["1", "124", "6"],
             "PitInTime": pd.to_timedelta([None, 190, None], unit="s"),
             "PitOutTime": [pd.NaT, pd.NaT, pd.NaT],  # FastF1 sometimes leaves this empty
         },
@@ -81,4 +82,39 @@ def test_fastf1_build_laps_infers_out_lap_and_converts_times():
     assert df["is_pit_in"].tolist() == [False, True, False]
     assert df["is_pit_out"].tolist() == [False, False, True]  # inferred from previous pit-in
     assert df["track_temp"].tolist() == [30.0, 30.5, 31.0]
+    assert df["track_status"].tolist() == ["green", "sc", "vsc"]  # worst status in the lap
     assert (df["source"] == "fastf1").all()
+
+
+def _rc(rows):
+    return pd.DataFrame(rows, columns=["date", "lap_number", "category", "flag", "message"])
+
+
+def test_status_by_lap_covers_deploy_through_end_inclusive():
+    rc = _rc(
+        [
+            ("2024-01-01T10:00", 10, "SafetyCar", None, "SAFETY CAR DEPLOYED"),
+            ("2024-01-01T10:20", 13, "SafetyCar", None, "SAFETY CAR IN THIS LAP"),
+            ("2024-01-01T10:50", 30, "SafetyCar", None, "VIRTUAL SAFETY CAR DEPLOYED"),
+            ("2024-01-01T10:52", 31, "SafetyCar", None, "VIRTUAL SAFETY CAR ENDING"),
+        ]
+    )
+    status = openf1.status_by_lap(rc)
+    assert {n: status[n] for n in (10, 11, 12, 13)} == {10: "sc", 11: "sc", 12: "sc", 13: "sc"}
+    assert 14 not in status and 9 not in status  # restart lap is not neutralised
+    assert status[30] == "vsc" and status[31] == "vsc"
+
+
+def test_status_by_lap_red_flag_wins_and_unclosed_sc_runs_to_red():
+    rc = _rc(
+        [
+            ("2024-01-01T10:00", 5, "SafetyCar", None, "SAFETY CAR DEPLOYED"),
+            ("2024-01-01T10:05", 7, "Flag", "RED", "RED FLAG"),
+        ]
+    )
+    status = openf1.status_by_lap(rc)
+    assert status == {5: "sc", 6: "sc", 7: "red"}
+
+
+def test_status_by_lap_handles_empty_race_control():
+    assert openf1.status_by_lap(pd.DataFrame()) == {}

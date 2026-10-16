@@ -21,8 +21,12 @@ COLUMNS = [
     "track_temp",
     "air_temp",
     "rainfall",
+    "track_status",
     "source",
 ]
+
+# Worst status seen during a lap. Yellow flags are local, so they stay "green".
+TRACK_STATUSES = ["green", "vsc", "sc", "red"]
 
 
 def finalize(df: pd.DataFrame) -> pd.DataFrame:

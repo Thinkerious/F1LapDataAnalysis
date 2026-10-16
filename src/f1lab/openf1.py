@@ -62,11 +62,60 @@ def list_races(year: int) -> pd.DataFrame:
     return sessions[["session_key", "round", "circuit_short_name", "year"]]
 
 
+_NEUTRALISATIONS = {
+    "sc": ("SAFETY CAR DEPLOYED", "SAFETY CAR IN THIS LAP"),
+    "vsc": ("VIRTUAL SAFETY CAR DEPLOYED", "VIRTUAL SAFETY CAR ENDING"),
+}
+
+
+def status_by_lap(race_control: pd.DataFrame) -> dict[int, str]:
+    """Map lap number to its worst track status (sc, vsc or red) from race control.
+
+    A safety-car or VSC period covers the deploy lap through the end lap
+    inclusive. Measured on 2023-2025 pace: deploy lap ~1.3x race median, middle
+    ~1.5x, end lap ~1.5x (SC) or ~1.08x (VSC), and the lap after is back to
+    ~1.03x, so the restart lap needs no special treatment. A deployment with no
+    matching end (it ended under a red flag) runs to the next red flag lap, or
+    covers just its deploy lap if there is none. Lap numbers are the race
+    leader's, so this is approximate for lapped cars.
+    """
+    if race_control.empty:
+        return {}
+    rc = race_control.dropna(subset=["lap_number"]).sort_values("date")
+    red_laps = sorted(
+        int(n) for n in rc.loc[rc["flag"] == "RED", "lap_number"]
+    )
+    rank = {"vsc": 1, "sc": 2, "red": 3}
+    status: dict[int, str] = {}
+
+    def mark(lap: int, kind: str) -> None:
+        if rank[kind] > rank.get(status.get(lap), 0):
+            status[lap] = kind
+
+    for kind, (deploy, end) in _NEUTRALISATIONS.items():
+        start = None
+        for message, lap in zip(rc["message"], rc["lap_number"].astype(int)):
+            if message == deploy and start is None:
+                start = lap
+            elif message == end and start is not None:
+                for n in range(start, lap + 1):
+                    mark(n, kind)
+                start = None
+        if start is not None:  # never closed
+            later_red = [n for n in red_laps if n >= start]
+            for n in range(start, (later_red[0] if later_red else start) + 1):
+                mark(n, kind)
+    for lap in red_laps:
+        mark(lap, "red")
+    return status
+
+
 def build_laps(
     laps: pd.DataFrame,
     stints: pd.DataFrame,
     weather: pd.DataFrame,
     drivers: pd.DataFrame,
+    race_control: pd.DataFrame | None = None,
     *,
     season: int,
     round_: int,
@@ -107,6 +156,8 @@ def build_laps(
 
     merged = merged.merge(drivers[["driver_number", "name_acronym"]], on="driver_number", how="left")
 
+    lap_status = status_by_lap(race_control if race_control is not None else pd.DataFrame())
+
     out = pd.DataFrame(
         {
             "season": season,
@@ -123,6 +174,7 @@ def build_laps(
             "track_temp": merged["track_temperature"],
             "air_temp": merged["air_temperature"],
             "rainfall": merged["rainfall"].fillna(0) > 0,
+            "track_status": merged["lap_number"].map(lap_status).fillna("green"),
             "source": "openf1",
         }
     )
@@ -135,7 +187,7 @@ def load_race_laps(year: int, round_: int) -> pd.DataFrame:
     sk = int(row["session_key"])
     frames = {
         name: pd.DataFrame(get(name, session_key=sk))
-        for name in ("laps", "stints", "weather", "drivers")
+        for name in ("laps", "stints", "weather", "drivers", "race_control")
     }
     if frames["laps"].empty:
         # e.g. 2023 Imola: listed as a race but cancelled, so every endpoint is empty
@@ -145,6 +197,7 @@ def load_race_laps(year: int, round_: int) -> pd.DataFrame:
         frames["stints"],
         frames["weather"],
         frames["drivers"],
+        frames["race_control"],
         season=year,
         round_=round_,
         track=row["circuit_short_name"],

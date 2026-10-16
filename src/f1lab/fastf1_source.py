@@ -15,6 +15,23 @@ from .schema import finalize
 CACHE_DIR = Path("data/fastf1_cache")
 
 
+def track_status(codes: str | float) -> str:
+    """Worst status in a lap's `TrackStatus` string.
+
+    Per the FastF1 docs (api.track_status_data): 1 clear, 2 yellow, 4 safety
+    car, 5 red flag, 6 VSC deployed, 7 VSC ending. The string holds every code
+    that occurred during the lap, e.g. "124".
+    """
+    codes = codes if isinstance(codes, str) else ""
+    if "5" in codes:
+        return "red"
+    if "4" in codes:
+        return "sc"
+    if "6" in codes or "7" in codes:
+        return "vsc"
+    return "green"
+
+
 def build_laps(
     laps: pd.DataFrame, weather: pd.DataFrame, *, season: int, round_: int, track: str
 ) -> pd.DataFrame:
@@ -43,6 +60,7 @@ def build_laps(
             "track_temp": weather["TrackTemp"],
             "air_temp": weather["AirTemp"],
             "rainfall": weather["Rainfall"].fillna(False),
+            "track_status": laps["TrackStatus"].map(track_status),
             "source": "fastf1",
         }
     )
