@@ -118,3 +118,19 @@ def test_status_by_lap_red_flag_wins_and_unclosed_sc_runs_to_red():
 
 def test_status_by_lap_handles_empty_race_control():
     assert openf1.status_by_lap(pd.DataFrame()) == {}
+
+
+def test_finalize_maps_fastf1_track_names_to_openf1_names():
+    from f1lab.schema import finalize
+
+    df = pd.DataFrame(
+        {
+            "season": [2022, 2023], "round": [7, 8], "track": ["Monaco", "Monte Carlo"],
+            "driver": ["VER", "VER"], "lap_number": [2, 2], "lap_time_s": [75.0, 75.0],
+            "compound": ["SOFT", "SOFT"], "tyre_age": [2, 2], "stint": [1, 1],
+            "is_pit_in": [False, False], "is_pit_out": [False, False],
+            "track_temp": [30.0, 30.0], "air_temp": [20.0, 20.0], "rainfall": [False, False],
+            "track_status": ["green", "green"], "source": ["fastf1", "openf1"],
+        }
+    )
+    assert finalize(df)["track"].tolist() == ["Monte Carlo", "Monte Carlo"]

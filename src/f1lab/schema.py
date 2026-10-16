@@ -25,6 +25,18 @@ COLUMNS = [
     "source",
 ]
 
+# The two sources name circuits differently (FastF1 uses the event location,
+# OpenF1 its circuit short name). Canonical names are OpenF1's.
+TRACK_ALIASES = {
+    "Barcelona": "Catalunya",
+    "Budapest": "Hungaroring",
+    "Marina Bay": "Singapore",
+    "Monaco": "Monte Carlo",
+    "Montréal": "Montreal",
+    "São Paulo": "Interlagos",
+    "Yas Island": "Yas Marina Circuit",
+}
+
 # Worst status seen during a lap. Yellow flags are local, so they stay "green".
 TRACK_STATUSES = ["green", "vsc", "sc", "red"]
 
@@ -32,6 +44,7 @@ TRACK_STATUSES = ["green", "vsc", "sc", "red"]
 def finalize(df: pd.DataFrame) -> pd.DataFrame:
     """Order columns and enforce dtypes so both sources produce identical tables."""
     out = df[COLUMNS].copy()
+    out["track"] = out["track"].replace(TRACK_ALIASES)
     out["season"] = out["season"].astype(int)
     out["round"] = out["round"].astype(int)
     out["lap_number"] = out["lap_number"].astype(int)
