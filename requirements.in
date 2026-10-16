@@ -1,0 +1,12 @@
+fastf1
+pandas
+numpy
+scikit-learn
+lightgbm
+lifelines
+mapie
+matplotlib
+jupyter
+nbconvert
+ipykernel
+pytest
