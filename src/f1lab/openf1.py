@@ -19,6 +19,10 @@ MIN_GAP_S = 0.4  # be polite to a free API
 _last_call = 0.0
 
 
+class NoRaceData(ValueError):
+    pass
+
+
 def get(endpoint: str, **params) -> list[dict]:
     """GET an OpenF1 endpoint, cached by endpoint and params."""
     global _last_call
@@ -37,7 +41,7 @@ def get(endpoint: str, **params) -> list[dict]:
             data = []
             break
         if r.status_code in (429, 500, 502, 503):
-            time.sleep(2**attempt)
+            time.sleep(3 * 2**attempt)  # 3, 6, 12, 24, 48 s; 429s clear slowly
             continue
         r.raise_for_status()
         data = r.json()
@@ -61,7 +65,6 @@ def list_races(year: int) -> pd.DataFrame:
 def build_laps(
     laps: pd.DataFrame,
     stints: pd.DataFrame,
-    pits: pd.DataFrame,
     weather: pd.DataFrame,
     drivers: pd.DataFrame,
     *,
@@ -84,7 +87,12 @@ def build_laps(
         merged["tyre_age_at_start"] + (merged["lap_number"] - merged["lap_start"]) + 1
     )
 
-    pit_in = set(zip(pits["driver_number"], pits["lap_number"]))
+    # Pit-in laps: the last lap of every stint except a driver's final one. The
+    # `pit` endpoint is empty for early 2023, and this matched it exactly (43/43
+    # stops) on 2024 round 1, so stints are the single source.
+    last_stint = stints.groupby("driver_number")["stint_number"].transform("max")
+    ended = stints[stints["stint_number"] < last_stint]
+    pit_in = set(zip(ended["driver_number"], ended["lap_end"]))
     merged["is_pit_in"] = [
         (d, n) in pit_in for d, n in zip(merged["driver_number"], merged["lap_number"])
     ]
@@ -127,12 +135,14 @@ def load_race_laps(year: int, round_: int) -> pd.DataFrame:
     sk = int(row["session_key"])
     frames = {
         name: pd.DataFrame(get(name, session_key=sk))
-        for name in ("laps", "stints", "pit", "weather", "drivers")
+        for name in ("laps", "stints", "weather", "drivers")
     }
+    if frames["laps"].empty:
+        # e.g. 2023 Imola: listed as a race but cancelled, so every endpoint is empty
+        raise NoRaceData(f"{year} round {round_} ({row['circuit_short_name']}) has no lap data")
     return build_laps(
         frames["laps"],
         frames["stints"],
-        frames["pit"],
         frames["weather"],
         frames["drivers"],
         season=year,

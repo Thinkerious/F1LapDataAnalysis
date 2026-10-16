@@ -28,7 +28,6 @@ def test_openf1_build_laps_assigns_stint_age_pit_and_weather():
             "tyre_age_at_start": [0, 0],
         }
     )
-    pits = pd.DataFrame({"driver_number": [1], "lap_number": [2]})
     weather = pd.DataFrame(
         {
             "date": ["2024-03-02T14:59:00+00:00", "2024-03-02T15:02:00+00:00"],
@@ -40,7 +39,7 @@ def test_openf1_build_laps_assigns_stint_age_pit_and_weather():
     drivers = pd.DataFrame({"driver_number": [1], "name_acronym": ["VER"]})
 
     df = openf1.build_laps(
-        laps, stints, pits, weather, drivers, season=2024, round_=1, track="Sakhir"
+        laps, stints, weather, drivers, season=2024, round_=1, track="Sakhir"
     )
 
     assert list(df.columns) == COLUMNS
