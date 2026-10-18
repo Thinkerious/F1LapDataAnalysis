@@ -92,3 +92,14 @@ def test_gbm_features_mark_unseen_track_as_missing_and_keep_compound_order():
     assert x["track"].isna().tolist() == [False, True]
     assert list(x["compound"].cat.categories) == ["SOFT", "MEDIUM", "HARD"]
     assert x["fuel_frac"].tolist() == [0.2, 0.4]
+
+
+def test_wet_races_flags_by_wet_tyre_share_even_with_no_clean_early_laps():
+    from f1lab.features import wet_races
+
+    def race(rnd, wet_laps):
+        comp = ["INTERMEDIATE"] * wet_laps + ["SOFT"] * (20 - wet_laps)
+        return pd.DataFrame({"season": 2024, "round": rnd, "compound": comp})
+
+    raw = pd.concat([race(1, 0), race(2, 5), race(3, 4)])  # 0%, 25%, 20%
+    assert wet_races(raw) == {(2024, 2), (2024, 3)}

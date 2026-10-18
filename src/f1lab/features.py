@@ -14,6 +14,14 @@ import pandas as pd
 # the data: five races sit at 1.10 or above, the next is 1.04.
 DRYING_RATIO = 1.05
 
+# Races where a large share of laps were run on intermediate or wet tyres. Based
+# on tyre choice, so it does not depend on the rain flag (unreliable) or on clean
+# early laps existing (a wet start leaves none, which made DRYING_RATIO silently
+# skip Montreal 2024). Natural break: eleven races sit at 0.24 or above, the next
+# is Spa 2025 at 0.02. Added after inspecting 2024 validation coverage failures;
+# it does not change which 2025 test races are excluded.
+WET_TYRE_SHARE = 0.2
+
 # A driver's median pace needs enough clean laps to be a stable base. Only 163
 # laps sit in driver-races under this limit, so dropping them costs almost nothing.
 MIN_DRIVER_LAPS = 10
@@ -33,10 +41,17 @@ def drying_races(clean: pd.DataFrame) -> set[tuple[int, int]]:
     return set(ratio[ratio > DRYING_RATIO].index)
 
 
-def prepare(raw: pd.DataFrame, clean: pd.DataFrame) -> pd.DataFrame:
-    """Add the target and fuel proxy to the cleaned laps and drop drying races."""
+def wet_races(raw: pd.DataFrame) -> set[tuple[int, int]]:
+    """Races where over WET_TYRE_SHARE of laps were on intermediates or wets."""
     key = ["season", "round"]
-    skip = drying_races(clean)
+    wet = raw["compound"].isin(["INTERMEDIATE", "WET"]).groupby([raw["season"], raw["round"]]).mean()
+    return set(wet[wet >= WET_TYRE_SHARE].index)
+
+
+def prepare(raw: pd.DataFrame, clean: pd.DataFrame) -> pd.DataFrame:
+    """Add the target and fuel proxy to the cleaned laps and drop wet and drying races."""
+    key = ["season", "round"]
+    skip = drying_races(clean) | wet_races(raw)
     df = clean[[(s, r) not in skip for s, r in zip(clean["season"], clean["round"])]].copy()
 
     race_laps = raw.groupby(key)["lap_number"].max().rename("race_laps")
