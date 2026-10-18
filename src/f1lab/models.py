@@ -74,3 +74,14 @@ def make_gbm(num_leaves: int = 4, n_estimators: int = 200, seed: int = 0):
         min_child_samples=100, subsample=0.8, subsample_freq=1, colsample_bytree=0.8,
         random_state=seed, verbose=-1,
     )
+
+
+def make_quantile_gbm(alpha: float, num_leaves: int = 4, n_estimators: int = 200, seed: int = 0):
+    """Same small GBM as `make_gbm`, but predicting the `alpha` quantile."""
+    import lightgbm as lgb
+
+    return lgb.LGBMRegressor(
+        objective="quantile", alpha=alpha, learning_rate=0.05, n_estimators=n_estimators,
+        num_leaves=num_leaves, min_child_samples=100, subsample=0.8, subsample_freq=1,
+        colsample_bytree=0.8, random_state=seed, verbose=-1,
+    )
