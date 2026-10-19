@@ -20,8 +20,9 @@ def make_sim(rate_late=0.0, rate_early=0.0):
     hz = Hazard()
     hz.rate_early_, hz.rate_late_, hz.track_multiplier_ = rate_early, rate_late, {}
     pools = {
-        "stint_shift": np.array([0.0]), "lap_noise": np.array([0.0]), "sc": np.array([1.5]),
-        "vsc": np.array([1.2]), "lap1": np.array([1.1]), "len_sc": np.array([3]),
+        "stint_shift": np.array([0.0]), "lap_noise": np.array([0.0]),
+        "sc_period": np.array([1.5]), "sc_lap": np.array([0.0]),
+        "vsc_period": np.array([1.2]), "vsc_lap": np.array([0.0]), "lap1": np.array([1.1]), "len_sc": np.array([3]),
         "len_vsc": np.array([2]), "p_sc_early": 1.0, "p_sc_late": 1.0,
     }
     return Simulator(ZeroModel(), ["T"], pit, hz, pools)
@@ -110,3 +111,15 @@ def test_used_sets_start_older_and_stint_age_resets_to_the_next_sets_age():
     # lap 1 is not modelled. Stint one: ages 5..24 vs 1..20 -> laps 2-20 are 4 older each (19 laps).
     # Stint two: 8.. vs 1.. -> 30 laps, each 7 older.
     assert np.allclose(b.totals - a.totals, 0.1 * (4 * 19 + 7 * 30))
+
+
+def test_each_safety_car_period_gets_one_shared_multiplier_across_its_laps():
+    sim = make_sim()
+    sim.pools["sc_period"] = np.array([1.3, 1.7])   # two possible multipliers per period
+    status = np.zeros(50, dtype=int)
+    status[9:14] = 2      # one 5-lap period
+    r = sim.simulate("T", 50, 100.0, ONE_STOP, 30.0, 20.0, n=500, seed=3, status=status)
+    base = 100 * 1.1 + 49 * 100 + 22
+    extra = (r.totals - base) / 100 / 5          # (multiplier - 1) summed over 5 laps, per lap
+    # shared draw: every run is all-1.3 or all-1.7, never a mix of the two
+    assert set(np.round(extra, 6)) == {0.3, 0.7}

@@ -59,15 +59,20 @@ def test_pit_loss_samples_neutralised_stops_from_their_own_pool():
     assert abs(model.sample(rng, "A", neutralised=False, size=200).mean() - 22.0) < 1e-6
 
 
-def test_lap_multipliers_use_the_drivers_own_clean_pace_and_skip_pit_laps():
-    clean = pd.DataFrame({"season": 2024, "round": 1, "driver": "AAA", "lap_time_s": [90.0, 90.0, 90.0]})
-    raw = _race(
-        [
-            (2024, 1, "T", "AAA", 1, 99.0, False, False, "green"),
-            (2024, 1, "T", "AAA", 2, 135.0, False, False, "sc"),
-            (2024, 1, "T", "AAA", 3, 108.0, False, False, "vsc"),
-            (2024, 1, "T", "AAA", 4, 200.0, True, False, "sc"),   # pit lap, must be skipped
-        ]
-    )
-    m = lap_multipliers(raw, clean)
-    assert m["lap1"].tolist() == [1.1] and m["sc"].tolist() == [1.5] and m["vsc"].tolist() == [1.2]
+def test_lap_multipliers_use_own_pace_skip_pit_laps_and_split_period_from_lap_noise():
+    cars = ["A", "B", "C", "D", "E", "F"]
+    clean = pd.DataFrame({"season": 2024, "round": 1, "driver": cars, "lap_time_s": 90.0})
+    rows = []
+    for car in cars:
+        for lap in range(1, 11):
+            status = "sc" if 4 <= lap <= 8 else "green"
+            t = 99.0 if lap == 1 else (135.0 if status == "sc" else 90.0)
+            if car == "A" and lap == 6:
+                t = 144.0                                  # one slow lap inside the period
+            rows.append((2024, 1, "T", car, lap, t, False, False, status))
+    rows.append((2024, 1, "T", "A", 11, 500.0, True, False, "sc"))   # pit lap, must be skipped
+    m = lap_multipliers(_race(rows), clean)
+    assert set(np.round(m["lap1"], 3)) == {1.1}
+    assert len(m["sc_period"]) == 5 and np.allclose(m["sc_period"], 1.5 + 0.1 / 30)   # one entry per lap; mean includes the slow lap
+    assert abs(m["sc_lap"].max() - (0.1 - 0.1 / 30)) < 1e-9 and abs(m["sc_lap"].mean()) < 1e-9   # deviations centre on the period mean
+    assert len(m["vsc_period"]) == 0

@@ -3,7 +3,8 @@
 Each run builds a race lap by lap:
   - a safety car / VSC timeline drawn from the hazard model (or an observed one),
   - green laps = base pace + lap-time model + stint-level shift + lap noise,
-  - neutralised laps and lap 1 = base pace x a multiplier drawn from history,
+  - neutralised laps = base pace x a multiplier drawn once per safety car period, plus
+    small lap-to-lap noise; lap 1 = base pace x a multiplier drawn from history,
   - pit stops add a loss drawn from history and reset tyre age.
 
 Noise comes from out-of-fold residuals of the lap-time model, split into a shift
@@ -114,6 +115,10 @@ class Simulator:
         else:
             timeline = np.tile(np.asarray(status, dtype=np.int8), (n, 1))
         stint_shift = rng.choice(self.pools["stint_shift"], size=(n, stints))
+        prev = np.concatenate([np.zeros((n, 1), dtype=timeline.dtype), timeline[:, :-1]], axis=1)
+        period = np.cumsum((timeline > 0) & (timeline != prev), axis=1)   # id of the period each lap is in
+        sc_shared = rng.choice(self.pools["sc_period"], size=(n, int(period.max()) + 1))
+        vsc_shared = rng.choice(self.pools["vsc_period"], size=(n, int(period.max()) + 1))
         rows = np.arange(n)
 
         start_ages = np.array([s.start_age for s in strategy])
@@ -127,8 +132,10 @@ class Simulator:
             else:
                 green = base_pace + delta[c, np.minimum(age, MAX_AGE), lap] + stint_shift[rows, stint] \
                     + rng.choice(self.pools["lap_noise"], n)
-                t = np.where(st == 2, base_pace * rng.choice(self.pools["sc"], n),
-                             np.where(st == 1, base_pace * rng.choice(self.pools["vsc"], n), green))
+                pid = period[:, lap - 1]
+                sc_mult = sc_shared[rows, pid] + rng.choice(self.pools["sc_lap"], n)
+                vsc_mult = vsc_shared[rows, pid] + rng.choice(self.pools["vsc_lap"], n)
+                t = np.where(st == 2, base_pace * sc_mult, np.where(st == 1, base_pace * vsc_mult, green))
             has_stop = stint < stints - 1
             pit = has_stop & (planned_end[rows, stint] == lap)
             if react and lap > 1:
@@ -201,11 +208,17 @@ def build_simulator(raw: pd.DataFrame, clean: pd.DataFrame, seasons, seed: int =
         "stint_shift": frame.loc[big, "r"].groupby(frame.loc[big, "stint"]).mean().to_numpy(),
         "lap_noise": (frame.loc[big, "r"] - stint_mean[big]).to_numpy(),
     }
-    lm = lap_multipliers(raw_s[[(s, r) not in skip for s, r in zip(raw_s["season"], raw_s["round"])]], clean_s)
-    pools.update(sc=lm["sc"], vsc=lm["vsc"], lap1=lm["lap1"])
+    # Safety car lap pace and period lengths come from OpenF1 seasons only. FastF1 (2022)
+    # marks a lap as safety car if any part of it was, which dilutes the multiplier (2022
+    # averages 1.33x against 1.45-1.47x in every OpenF1 season). Hazard starts are counts,
+    # so they use every season.
+    dry = raw_s[[(s, r) not in skip for s, r in zip(raw_s["season"], raw_s["round"])]]
+    openf1 = dry["source"] == "openf1"
+    pools.update(lap_multipliers(dry[openf1], clean_s[clean_s["source"] == "openf1"]))
 
     lap = lap_status(raw_s, skip)
-    events, table = neutralisation_events(lap), hazard_table(lap)
+    table = hazard_table(lap)
+    events = neutralisation_events(lap_status(raw_s[raw_s["source"] == "openf1"], skip))
     pools["len_sc"] = events.loc[events["kind"] == "sc", "length"].to_numpy()
     pools["len_vsc"] = events.loc[events["kind"] == "vsc", "length"].to_numpy()
     early = events["start"] <= 2
