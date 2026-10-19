@@ -76,3 +76,18 @@ def test_lap_multipliers_use_own_pace_skip_pit_laps_and_split_period_from_lap_no
     assert len(m["sc_period"]) == 5 and np.allclose(m["sc_period"], 1.5 + 0.1 / 30)   # one entry per lap; mean includes the slow lap
     assert abs(m["sc_lap"].max() - (0.1 - 0.1 / 30)) < 1e-9 and abs(m["sc_lap"].mean()) < 1e-9   # deviations centre on the period mean
     assert len(m["vsc_period"]) == 0
+
+
+def test_pit_loss_can_learn_neutralised_stops_from_recent_seasons_only():
+    stops = pd.DataFrame(
+        {
+            "season": [2022] * 40 + [2022] * 5 + [2024] * 5,
+            "track": "A",
+            "status": ["green"] * 40 + ["sc"] * 10,
+            "loss": [22.0] * 40 + [24.0] * 5 + [10.0] * 5,
+        }
+    )
+    all_seasons = PitLoss().fit(stops)
+    recent = PitLoss().fit(stops, neutral_since=2024)
+    assert np.median(all_seasons.neutral_pool_) == 17.0
+    assert (recent.neutral_pool_ == 10.0).all()

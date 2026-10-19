@@ -55,7 +55,7 @@ class PitLoss:
     def __init__(self, k: float = 10.0):
         self.k = k
 
-    def fit(self, stops: pd.DataFrame) -> "PitLoss":
+    def fit(self, stops: pd.DataFrame, neutral_since: int | None = None) -> "PitLoss":
         green = stops[(stops["status"] == "green") & stops["loss"].between(*self.GREEN_RANGE)]
         self.overall_ = float(green["loss"].median())
         by = green.groupby("track")["loss"].agg(["median", "size"])
@@ -63,6 +63,8 @@ class PitLoss:
         self.track_median_ = ((by["median"] * by["size"] + self.overall_ * self.k) / (by["size"] + self.k)).to_dict()
         self.green_noise_ = (green["loss"] - green["track"].map(self.track_median_)).to_numpy()
         neutral = stops[stops["status"].isin(["sc", "vsc"])]
+        if neutral_since is not None:   # stops under a safety car have been getting cheaper, see notebook 09
+            neutral = neutral[neutral["season"] >= neutral_since]
         self.neutral_pool_ = neutral["loss"].clip(0, 60).to_numpy()
         return self
 

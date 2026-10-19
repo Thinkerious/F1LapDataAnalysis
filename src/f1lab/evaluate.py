@@ -86,9 +86,10 @@ def hazard_results(raw: pd.DataFrame, clean: pd.DataFrame, stage: str) -> dict:
     return {"summary": pd.Series(out), "races": races, "rates": (hz.rate_early_, hz.rate_late_)}
 
 
-def simulator_results(raw: pd.DataFrame, clean: pd.DataFrame, stage: str, n: int = 400) -> dict:
+def simulator_results(raw: pd.DataFrame, clean: pd.DataFrame, stage: str, n: int = 400,
+                      recent_neutral_stops: bool = False) -> dict:
     train_seasons, test_season = SEASONS[stage]
-    sim = build_simulator(raw, clean, seasons=train_seasons)
+    sim = build_simulator(raw, clean, seasons=train_seasons, recent_neutral_stops=recent_neutral_stops)
     plans = driver_races(raw, clean, seasons=(test_season,))
     full = replay(sim, plans, n=n)
     flat = replay(constant_pace_version(sim), plans, n=n)

@@ -191,8 +191,12 @@ def describe(strategy: list[Stint]) -> str:
 
 
 # ---- building a simulator from data -------------------------------------------------------
-def build_simulator(raw: pd.DataFrame, clean: pd.DataFrame, seasons, seed: int = 0) -> Simulator:
-    """Fit every part from the given seasons only."""
+def build_simulator(raw: pd.DataFrame, clean: pd.DataFrame, seasons, seed: int = 0,
+                    recent_neutral_stops: bool = False) -> Simulator:
+    """Fit every part from the given seasons only.
+
+    `recent_neutral_stops` learns the cost of a pit stop under a safety car / VSC from the
+    latest training season only, because those stops have become cheaper every year."""
     skip = drying_races(clean) | wet_races(raw)
     in_seasons = raw["season"].isin(seasons)
     raw_s = raw[in_seasons]
@@ -236,7 +240,8 @@ def build_simulator(raw: pd.DataFrame, clean: pd.DataFrame, seasons, seed: int =
 
     stops = pit_stops(raw_s[[(s, r) not in skip for s, r in zip(raw_s["season"], raw_s["round"])]])
     return Simulator(
-        make_gbm(GBM_LEAVES, GBM_TREES, seed).fit(X, y), tracks, PitLoss().fit(stops), Hazard().fit(table), pools
+        make_gbm(GBM_LEAVES, GBM_TREES, seed).fit(X, y), tracks,
+        PitLoss().fit(stops, neutral_since=max(seasons) if recent_neutral_stops else None), Hazard().fit(table), pools
     )
 
 
