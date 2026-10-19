@@ -71,10 +71,12 @@ class Hazard:
 
     `k` is the strength of the pull toward the average track: a track's multiplier
     is (events + k) / (expected events + k), so a track with little history stays
-    close to 1.
+    close to 1. `k=None` turns the track effect off entirely, which is the default
+    because notebook 07 found the track multipliers do not predict which races get
+    a safety car.
     """
 
-    def __init__(self, k: float = 2.0):
+    def __init__(self, k: float | None = None):
         self.k = k
 
     def fit(self, table: pd.DataFrame) -> "Hazard":
@@ -82,9 +84,11 @@ class Hazard:
         late = table[~table["early"]]
         self.rate_early_ = float(early["event"].mean())
         self.rate_late_ = float(late["event"].mean())
-        expected = late.groupby("track")["event"].apply(lambda s: len(s) * self.rate_late_)
-        observed = late.groupby("track")["event"].sum()
-        self.track_multiplier_ = ((observed + self.k) / (expected + self.k)).to_dict()
+        self.track_multiplier_ = {}
+        if self.k is not None:
+            expected = late.groupby("track")["event"].apply(lambda s: len(s) * self.rate_late_)
+            observed = late.groupby("track")["event"].sum()
+            self.track_multiplier_ = ((observed + self.k) / (expected + self.k)).to_dict()
         return self
 
     def predict(self, table: pd.DataFrame) -> np.ndarray:

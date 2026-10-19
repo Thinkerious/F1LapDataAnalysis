@@ -64,3 +64,15 @@ def test_hazard_separates_early_laps_and_pulls_track_effect_toward_one():
 
 def test_log_loss_rewards_confident_correct_predictions():
     assert log_loss([1, 0], [0.9, 0.1]) < log_loss([1, 0], [0.5, 0.5])
+
+
+def test_hazard_without_track_effect_ignores_the_track():
+    table = pd.DataFrame(
+        {
+            "season": 2024, "round": 1, "track": ["A"] * 6 + ["B"] * 6, "lap": [1, 2, 3, 4, 5, 6] * 2,
+            "race_laps": 6, "event": [0, 0, 1, 0, 0, 0] + [0, 0, 0, 0, 0, 0],
+        }
+    )
+    table["early"] = table["lap"] <= 2
+    h = Hazard().fit(table)
+    assert h.rate(5, "A") == h.rate(5, "B") == h.rate_late_
