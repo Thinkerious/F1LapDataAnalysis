@@ -143,3 +143,22 @@ def test_rank_strategies_uses_common_draws_and_orders_by_mean():
     assert out["behind_best_s"].iloc[0] == 0 and abs(out["behind_best_s"].iloc[1] - 15.0) < 1e-6
     assert out["p_beats_best"].iloc[1] == 0.0   # same draws everywhere, so the gap never flips
     assert out["sd_s"].iloc[0] > 1.0           # while the totals themselves do vary run to run
+
+
+def test_cli_ranks_plans_and_prints_a_table(capsys):
+    from f1lab import cli
+
+    out = cli.main(["--track", "T", "--laps", "40", "--pace", "100", "--max-stops", "1",
+                    "--min-stint", "10", "--step", "10", "--runs", "20", "--top", "3"], simulator=make_sim())
+    text = capsys.readouterr().out
+    assert "plans" in text and "behind" in text and "beats_best" in text
+    assert out["mean_s"].is_monotonic_increasing and len(out) > 3
+    assert cli.clock(5415.3) == "1:30:15.3"
+
+
+def test_cli_warns_when_the_track_has_no_training_data(capsys):
+    from f1lab import cli
+
+    cli.main(["--track", "Nowhere", "--laps", "30", "--pace", "90", "--max-stops", "1", "--min-stint", "10",
+              "--step", "10", "--runs", "10"], simulator=make_sim())
+    assert "no training data" in capsys.readouterr().out
