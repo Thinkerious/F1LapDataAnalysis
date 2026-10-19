@@ -64,7 +64,16 @@ class Simulator:
 
     # ---- pieces -----------------------------------------------------------------
     def _delta_table(self, track, race_laps, track_temp, air_temp) -> np.ndarray:
-        """Predicted pace delta for every (compound, tyre age, lap), shape (3, MAX_AGE+1, laps+1)."""
+        """Predicted pace delta for every (compound, tyre age, lap), shape (3, MAX_AGE+1, laps+1).
+
+        Cached per race setup: a strategy search runs thousands of plans on one race."""
+        key = (track, race_laps, round(float(track_temp), 1), round(float(air_temp), 1))
+        cache = self.__dict__.setdefault("_table_cache", {})
+        if key not in cache:
+            cache[key] = self._build_delta_table(track, race_laps, track_temp, air_temp)
+        return cache[key]
+
+    def _build_delta_table(self, track, race_laps, track_temp, air_temp) -> np.ndarray:
         comp, age, lap = np.meshgrid(range(3), range(1, MAX_AGE + 1), range(1, race_laps + 1), indexing="ij")
         frame = pd.DataFrame(
             {
