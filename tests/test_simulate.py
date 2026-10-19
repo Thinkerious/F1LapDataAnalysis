@@ -123,3 +123,23 @@ def test_each_safety_car_period_gets_one_shared_multiplier_across_its_laps():
     extra = (r.totals - base) / 100 / 5          # (multiplier - 1) summed over 5 laps, per lap
     # shared draw: every run is all-1.3 or all-1.7, never a mix of the two
     assert set(np.round(extra, 6)) == {0.3, 0.7}
+
+
+def test_rank_strategies_uses_common_draws_and_orders_by_mean():
+    from f1lab.simulate import rank_strategies
+
+    class FavourHard:
+        """HARD laps are 0.5 s faster than SOFT, so a longer HARD stint should win."""
+
+        def predict(self, X):
+            return np.where(X["compound"].astype(str) == "HARD", -0.5, 0.0)
+
+    sim = make_sim()
+    sim.pools["lap_noise"] = np.array([-1.0, 0.0, 1.0])   # runs differ, but plans share each run's draws
+    sim.lap_model = FavourHard()
+    plans = [[Stint("SOFT", 40), Stint("HARD", 10)], [Stint("SOFT", 10), Stint("HARD", 40)]]
+    out = rank_strategies(sim, "T", 50, 100.0, 30.0, 20.0, plans=plans, n=300, seed=2)
+    assert out["plan"].tolist() == ["S10 > H40", "S40 > H10"]
+    assert out["behind_best_s"].iloc[0] == 0 and abs(out["behind_best_s"].iloc[1] - 15.0) < 1e-6
+    assert out["p_beats_best"].iloc[1] == 0.0   # same draws everywhere, so the gap never flips
+    assert out["sd_s"].iloc[0] > 1.0           # while the totals themselves do vary run to run

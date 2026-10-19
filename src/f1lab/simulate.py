@@ -229,3 +229,27 @@ def build_simulator(raw: pd.DataFrame, clean: pd.DataFrame, seasons, seed: int =
     return Simulator(
         make_gbm(GBM_LEAVES, GBM_TREES, seed).fit(X, y), tracks, PitLoss().fit(stops), Hazard().fit(table), pools
     )
+
+
+def rank_strategies(sim: Simulator, track: str, race_laps: int, base_pace: float, track_temp: float,
+                    air_temp: float, plans: list | None = None, n: int = 200, seed: int = 0,
+                    react: bool = False, **search) -> pd.DataFrame:
+    """Simulate every plan against the same random draws and sort by mean race time.
+
+    Using the same draws for every plan makes the differences between plans far less
+    noisy than the totals themselves (a safety car helps or hurts every plan together).
+    `p_beats_best` is the share of runs in which the plan finished ahead of the best one.
+    """
+    plans = plans if plans is not None else candidate_strategies(race_laps, **search)
+    totals = np.array([
+        sim.simulate(track, race_laps, base_pace, plan, track_temp, air_temp, n=n, seed=seed, react=react).totals
+        for plan in plans
+    ])
+    means = totals.mean(axis=1)
+    best = means.argmin()
+    out = pd.DataFrame({
+        "plan": [describe(p) for p in plans], "stops": [len(p) - 1 for p in plans],
+        "mean_s": means, "sd_s": totals.std(axis=1),
+        "behind_best_s": means - means[best], "p_beats_best": (totals < totals[best]).mean(axis=1),
+    })
+    return out.sort_values("mean_s").reset_index(drop=True)
